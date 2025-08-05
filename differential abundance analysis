@@ -1,0 +1,199 @@
+#NOTE: this analysis uses corncob and ANCOMBC to generate differentially abndant genera, then uses genera which agree between both analyses to make plots and conclusions about the data
+
+library(corncob)
+library(ANCOMBC)
+require(tidyverse)
+require(phyloseq)
+
+## corncob##
+
+ps_Soil <- subset_samples(ps1, Soil.Type == "SBC")
+ps_GenoBlank <- subset_samples(ps_Soil,  Genotype == "SBC" | Genotype == "BLANK") #two categories of comparison
+ps_GenoBlank <- prune_taxa(taxa_sums(ps_GenoBlank) >0, ps_GenoBlank)
+
+with(sample_data(ps_GenoBlank), table(Soil.Type, Genotype))
+
+soil <- ps_GenoBlank %>% 
+  tax_glom("GENUS") 
+
+new_ps_soil <- clean_taxa_names(soil)
+
+#run the model to calculate differential analyss
+#here looking at difference between Rhizo and Control
+
+#Jointly testing for differential abundance across Sample_type  and differential abundance across RNA, controlling for the effect of Sam_type and RNA on dispersion:
+#so everything above the line here are Rhizo microbes that were creater than DNA Control microbes?
+
+da_analysis_nt <- differentialTest(formula = ~Genotype,
+                                   phi.formula = ~ Genotype,
+                                   formula_null = ~ 1,
+                                   phi.formula_null = ~ Genotype,
+                                   test = "Wald", boot = FALSE,
+                                   data = new_ps_soil,
+                                   fdr_cutoff = 0.01, 
+                                   full_output = TRUE) #make sure you have the full output
+
+#extract estimates, standard errors, and p-values and combine with taxonomy table
+#get tax table
+corncob_long_results_nt <- data.frame (tax_table (new_ps_soil))
+#this essectially loops through to extract the coefficients I need to make the plot
+#I'm sure there's a much better way to do this but when in doubt.... for-loop it out
+for (i in 1:nrow (corncob_long_results_nt)){
+  corncob_long_results_nt [i,7:10] <- c (summary (da_analysis_nt[["full_output"]][[i]])[["coefficients"]][2, 1:4],
+                                         summary (da_analysis_nt[["full_output"]][[i]])[["coefficients"]][3, 1:4])
+}
+
+
+#give the appropriate column names
+colnames (corncob_long_results_nt)[7:10] <- c("Genotype_Estimate", "Genotype_StdErr", "Genotype_tValue", "Genotype_p")
+
+sum (is.na (corncob_long_results_nt$Genotype_p)) #number of models that didn't give p-values
+length (da_analysis_nt$discriminant_taxa_DA) #discriminant taxa... still not sure exactly what to do with these
+
+#adjust p values because the ones we extracted are not adjusted... yay :/
+corncob_long_results_nt$Genotype_p.fdr <- p.adjust (corncob_long_results_nt$Genotype_p, method="fdr")
+
+#subset only taxa that are significant (in this case based on sample type)
+corncob_long_sig_bw_SBCSoilSBCGeno <- corncob_long_results_nt[corncob_long_results_nt$Genotype_p.fdr<0.05 & 
+                                                 is.na (corncob_long_results_nt$Genotype_p.fdr)==FALSE,]
+
+# things above or below
+#How many more or less abundant in RNA compared to DNA
+#if above zero, genus is more abundant in RNA than in DNA, because DNA is the line on the plot [ie zero] that RNA is being compared to. if something is below zero, it was less in RNA than in DNA group [ie more abundant in the DNA group]
+dim(corncob_long_sig_bw_SBCSoilSBCGeno) #all the sig things
+above <- corncob_long_sig_bw_SBCSoilSBCGeno[corncob_long_sig_bw_SBCSoilSBCGeno$Genotype_Estimate>0,]
+dim(above) #sig things above zero
+
+
+saveRDS(corncob_long_sig_bw_SBCSoilSBCGeno , "/corncob_long_sig_bw_SBCSoilSBCGeno.rds")
+
+
+## ANCOMBC ##
+#subset data i want
+ps_Soil <- subset_samples(ps1, Soil.Type == "SBC") #change soil type
+#Warning: NaNs producedError in `[.data.frame`(ss_flag, fix_eff) : undefined columns selected
+
+#model
+out <- ancombc2(data = ps_Soil, #
+                assay_name="counts", 
+                tax_level="GENUS", #
+               fix_formula="Genotype", #
+               p_adj_method = "fdr", #?stats::p.adjust #they use bon in the paper. ayda using BH (alias of fdr) due to other papers saying use it in microbial studies
+               pseudo_sens = TRUE, 
+               lib_cut = 0, #dont remove any samples
+               struc_zero = T, neg_lb = F, trend=F,
+               prv_cut=0.1, # 0.1 if not in 10% of samples, discard asv
+               alpha = 0.05, #level of significance
+               group="Genotype", #column i'm comparing
+               pairwise=T,
+               n_cl=3, verbose=T, iter_control=list(tol = 1e-2, max_iter = 50, verbose = TRUE),)
+
+saveRDS(out , "ancomb_output/ancombc_out_genus_SBCsoilWBS_SBC_BLANK_CRW.rds")
+
+'Result from the ANCOM-BC log-linear model to determine taxa that are differentially abundant according to the covariate of interest. It contains: 1) log fold changes; 2) standard errors; 3) test statistics; 4) p-values; 5) adjusted p-values; 6) indicators whether the taxon is differentially abundant (TRUE) or not (FALSE).
+lfc = log fold change
+still compares categories alphabetically to get lfc. zero = blank'
+
+#look at what ancombc says is significant
+#data
+dat <- out$res
+#get the phylum and genus level
+x <- t(as.data.frame(strsplit(x = dat$taxon, split = "_"))) #some names are weird
+colnames(x) <- c("KINGDOM", "PHYLUM", "CLASS", "ORDER", "FAMILY", "GENUS")
+x <- as.data.frame(x)
+dat <- cbind(dat, x) # combine 2 data frames
+
+#get sig diff abund
+sbcsig <- dat[dat$diff_GenotypeSBC == TRUE, ] 
+dim(sbcsig)
+sum(sbcsig$lfc_GenotypeSBC >0) 
+
+## combare corncob and ancombc ##
+# significant in ancombc
+dat <- out$res
+sbcsig <- dat[dat$diff_GenotypeSBC == TRUE, ] 
+dim(sbcsig) #67
+sum(sbcsig$lfc_GenotypeSBC >0) #50
+sbc_above <- sbcsig[sbcsig$lfc_GenotypeSBC >0, ]
+sbc_below <- sbcsig[sbcsig$lfc_GenotypeSBC <0, ]
+
+#significant in corncob
+dat_corn_sbc <- readRDS("corncob_long_sig_bw_SBCSoilSBCGeno.rds")
+dat_corn_sbc$taxon <- paste(dat_corn_sbc$KINGDOM, dat_corn_sbc$PHYLUM, dat_corn_sbc$CLASS, dat_corn_sbc$ORDER, dat_corn_sbc$FAMILY, dat_corn_sbc$GENUS, sep = "_")
+dat_corn_sbc_above <- dat_corn_sbc[dat_corn_sbc$Genotype_Estimate >0, ]
+dim(dat_corn_sbc_above) #25
+dat_corn_sbc_below <- dat_corn_sbc[dat_corn_sbc$Genotype_Estimate <0, ]
+
+#same between both lists
+both_sbc <- sbcsig[(sbcsig$taxon %in% dat_corn_sbc$taxon), ] 
+dim(both_sbc) #24
+both_sbc_above<- sbc_above[sbc_above$taxon %in% dat_corn_sbc_above$taxon,]
+dim(both_sbc_above) #17
+both_sbc_below<- sbc_below[sbc_below$taxon %in% dat_corn_sbc_below$taxon,]
+dim(both_sbc_below) #7
+
+#get the phylum and genus level for plotting
+x <- t(as.data.frame(strsplit(x = both_sbc$taxon, split = "_"))) #some names are weird
+colnames(x) <- c("KINGDOM", "PHYLUM", "CLASS", "ORDER", "FAMILY", "GENUS")
+x <- as.data.frame(x)
+both_sbc <- cbind(both_sbc, x) # combine 2 data frames
+
+
+
+## plot genus that agree between analyses ##
+
+dat_wbs <- read.csv("SBCsoilWBSgeno.csv") #plotting ancombc values
+dat_sbc <- read.csv("SBCsoilSBCgeno.csv")
+dat_crw <- read.csv("SBCsoilCRWgeno.csv")
+
+dat_sbc$taxon <- as.factor(dat_sbc$taxon)
+
+crw_sbc <- ggplot(dat_sbc, aes(y = PHYLUM, x = lfc_GenotypeSBC), col = "#0072B2") +
+  geom_pointrange(aes(xmin = lfc_GenotypeSBC - se_GenotypeSBC,
+                      xmax = lfc_GenotypeSBC +se_GenotypeSBC), 
+                  alpha = 0.5, col = "#0072B2", position = position_nudge(y = -0)) +
+  geom_vline(xintercept = 0, linetype="dotdash") + 
+  theme_light () + 
+  theme(legend.position = "none") +
+  theme(title = element_text(size=20),
+        axis.text =element_text(size=15)) +
+  labs (y="", x= "Log Fold Change (LFC)", title="SBC Soil")
+
+  # combine plots
+
+plot2_crwsoil <- crw_sbc + 
+  geom_pointrange(data = dat_wbs, 
+                  aes(y = PHYLUM, x = lfc_GenotypeWBS,
+                      xmin = lfc_GenotypeWBS - abs(se_GenotypeWBS),
+                      xmax = lfc_GenotypeWBS + abs(se_GenotypeWBS)), 
+                  alpha = 0.5, col = "#CC79A7", position = position_nudge(y = -0.2)) +
+  theme_light () +
+    theme(title = element_text(size=17),
+        axis.text =element_text(size=15),
+        legend.position = "none") +  
+  labs (y="", x="", title="Rhizosphere vs SBC Bulk Soil") 
+
+plot3_crwsoil <- plot2_crwsoil + 
+  geom_pointrange(data = dat_crw, 
+                  aes(y = PHYLUM, x = lfc_GenotypeCRW,
+                      xmin = lfc_GenotypeCRW - abs(se_GenotypeCRW),
+                      xmax = lfc_GenotypeCRW + abs(se_GenotypeCRW)), 
+                  alpha = 0.5, col = "#D55E00", position = position_nudge(y = +0.20)) +
+  theme_light () +
+    theme(title = element_text(size=17),
+        axis.text =element_text(size=15),
+        legend.position = "none") +  
+  labs (y="", x="", title="Rhizosphere vs SBC Bulk Soil") 
+
+  
+plot3_sbcsoil #this is a single plot where each genus is in a different colore point
+
+
+
+
+
+
+
+
+
+
