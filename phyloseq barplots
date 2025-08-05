@@ -1,0 +1,106 @@
+library(ggpubr)
+library(ggplot2)
+require(tidyverse)
+require(phyloseq)
+
+## stacked barplot##
+
+ps_trans <- transform_sample_counts(ps1, function(x) {x/sum(x)} )
+
+
+#Plot
+plot_bar <- plot_bar(ps_trans, fill = "PHYLUM") +
+  geom_bar(aes(color = PHYLUM, fill = PHYLUM), 
+           stat = "identity", position = "stack") +
+  labs(x = "", y = "Relative Abundance\n") +
+  facet_wrap(~ Soil_Genotype_Position, scales = "free") +
+  theme(panel.background = element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        plot.title = element_text(hjust = 0.8, size=14, face= "bold", colour= "black"),
+        axis.text.y = element_blank(),
+        axis.title.y = element_text(size = 17, face = "bold", colour= "black"),
+        strip.text = element_text(size = 13, face = "bold", colour= "black"))
+
+
+#Plot
+plot_bar2 <- plot_bar(ps1, fill = "PHYLUM") +
+  geom_bar(aes(color = PHYLUM, fill = PHYLUM), 
+           stat = "identity", position = "stack") +
+  #coord_flip(ylim=c(0,100000)) +
+  labs(x = "", y = "Absolute Abundance\n") +
+  facet_wrap(~ Soil_Genotype_Position, scales = "free") +
+  theme(panel.background = element_blank(),
+        strip.text = element_text(size = 17, face = "bold"
+       # axis.text.x=element_blank(),
+        #axis.ticks.x=element_blank()
+       )
+
+## individual plots for each phyla with stat compare means ##
+
+ps_trans <- transform_sample_counts(ps1, function(x) {x/sum(x)} )
+
+ps_phylum <- phyloseq::tax_glom(ps_trans, "PHYLUM")
+taxa_names(ps_phylum) <- tax_table(ps_phylum)[, "PHYLUM"]
+
+
+my_comparisons <- list (c("SBC_BLANK_NoPlant", "SBC_SBC_NearRoots"), #within soil SBC
+                        c("SBC_BLANK_NoPlant", "SBC_WBS_NearRoots"),
+                        c("SBC_SBC_NearRoots" , "SBC_WBS_NearRoots"),
+                        
+                        c("WBS_BLANK_NoPlant", "WBS_SBC_NearRoots"), #within soil WBS
+                        c("WBS_BLANK_NoPlant", "WBS_WBS_NearRoots"),
+                        c("WBS_SBC_NearRoots" , "WBS_WBS_NearRoots"),
+                        
+                        c("CRW_BLANK_NoPlant", "CRW_SBC_NearRoots"), #within soil CRW
+                        c("CRW_BLANK_NoPlant", "CRW_WBS_NearRoots"),
+                        c("CRW_SBC_NearRoots" , "CRW_WBS_NearRoots"),
+                        
+                        c("WBS_BLANK_NoPlant", "SBC_BLANK_NoPlant"), #BLANKS
+                        c("WBS_BLANK_NoPlant", "CRW_BLANK_NoPlant"),
+                        c("CRW_BLANK_NoPlant", "SBC_BLANK_NoPlant"),
+                        
+                        c("WBS_SBC_NearRoots" , "SBC_SBC_NearRoots"), #same genotype diff soil
+                        c("CRW_SBC_NearRoots", "SBC_SBC_NearRoots"),
+                        c("CRW_SBC_NearRoots", "WBS_SBC_NearRoots"),
+                        
+                        c("WBS_WBS_NearRoots", "SBC_WBS_NearRoots"),
+                        c("CRW_WBS_NearRoots", "SBC_WBS_NearRoots"),
+                        c("CRW_WBS_NearRoots", "WBS_WBS_NearRoots"))
+                        
+                        
+
+SamList <- c("CRW", "CRW_CRW", "CRW_SBC", "CRW_WBS" , 
+            "POT", "POT_CRW", "POT_SBC", "POT_WBS",
+            "SBC", "SBC_CRW", "SBC_SBC", "SBC_WBS", 
+            "WBS", "WBS_CRW", "WBS_SBC", "WBS_WBS" ) 
+                        
+
+
+plot <- psmelt(ps_phylum) %>%
+ggplot(data = ., aes(x = Soil_Genotype_Position, y = Abundance)) +
+  geom_boxplot(outlier.shape  = NA) +
+  geom_jitter(aes(color = Soil_Genotype_Position), height = 0, width = .2) +
+  labs(x = "", y = "") +
+  scale_x_discrete(labels= SamList) + #x axis labels
+  #scale_color_manual(values = color) +
+  facet_wrap(~ OTU, scales = "free") +
+  theme_classic() +
+  theme(legend.position="none",
+        plot.title = element_text(hjust = 0.8, size=14, face= "bold", colour= "black"),
+        axis.text.x=element_text(angle = -45, hjust = 0, vjust = 1, size = 12, 
+                                 colour = "black", face = "bold"),
+        axis.text.y = element_text(size=12,  colour = "black", face = "bold")) +
+   stat_compare_means(comparisons = my_comparisons,
+                      method = "t.test",
+                      hide.ns = TRUE,
+                      size = 8, vjust = 0.7,
+                      symnum.args = list(cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 2),
+                                         symbols = c("****", "***", "**", "*", " "))) +
+    theme(panel.grid.major.x = element_line(color = "gray",
+                                        size = 0.5,
+                                        linetype = 2))
+
+
+
+       
