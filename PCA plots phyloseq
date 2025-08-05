@@ -1,0 +1,56 @@
+with(sample_data(ps1), table(Soil.Type, SamplingPosition, Genotype))
+
+ps_trans <- transform_sample_counts(ps1, function(x) {x/sum(x)} )
+ord <-ordinate(ps_trans, method = "PCoA", distance = "bray")
+
+
+#
+ord_plot<-plot_ordination(ps_trans, 
+                          ord, 
+                          color = "Soil_Genotype_Position",
+                          shape = "Soil.Type",
+                          label = "SampleID"
+                          ) 
+
+# get pc axis values
+pc1 <- ord_plot[["labels"]][["y"]]
+
+color <- c("#E69F00","#999933",  "#DDCC77","#D55E00",#crw
+           "#009E73", "#44AA99", "#117733",  "#888888",#pot
+           "#0072B2","#6699CC","#332288","#88CCEE",#sbc
+           "#CC79A7", "#CC6677","#AA4499","#661100")#wbs
+     
+fill_col = c( "white","black")
+
+
+ord_plot_all <- ord_plot + 
+  stat_ellipse(type = "norm", linetype = 2) + #add the circles around groups
+  theme_bw() +
+  geom_point(aes(shape = Soil.Type, 
+                 color = Soil_Genotype_Position, 
+                 fill = SamplingPosition),
+             size = 4, stroke = 3) + 
+  scale_shape_manual(values = c(21, 24, 22, 23)) +
+  scale_color_manual(name = "Soil_Genotype",
+                    values = color, 
+                     labels=c("CRW Soil", "C CRW", "C SBC", "C WBS", 
+             "POT Soil", "P CRW" , "P SBC", "P WBS", 
+             "SBC Soil", "S CRW" , "S SBC", "S WBS", 
+                "WBS Soil", "W CRW" , "W SBC", "W WBS")) +
+  scale_fill_manual(values = fill_col) + 
+  guides(fill = guide_legend(override.aes = list(color = fill_col)),
+       color = guide_legend(override.aes = list(shape = 21))) +
+  theme(plot.title = element_text(hjust = 0.5, size = 20, face = "bold"),
+        axis.text =element_text(size=14, face = "bold", color = "black"),
+        axis.title =element_text(size=16, face = "bold"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) +
+  labs(y = ("PC2 16.6%"), #change based on pc ord plot values
+       x = ("PC1 28.9%"),
+       title = "Microbial Community")
+
+
+
+
+
+
