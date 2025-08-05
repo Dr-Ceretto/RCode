@@ -101,6 +101,8 @@ SamList <- c("CRW_CRW", "CRW_SBC", "CRW_WBS" ,
              "SBC_CRW", "SBC_SBC", "SBC_WBS", 
              "WBS_CRW", "WBS_SBC", "WBS_WBS" ) 
 
+library(ggpubr)
+
 plot4 <- ggplot(data = df, aes(x = Soil_Genotype_Position, y = LeafNum, label = CaseID)) +
   geom_boxplot(outlier.shape  = NA) +
   labs(x = "Soil_Genotype", y = "Leaf Number", title = "Final Leaf Number") +
