@@ -1,0 +1,92 @@
+## tukey plot metadata ##
+#(eg plant health). Code based on geonXsoil_analysis_12.RmD
+
+require(tidyverse)
+require(phyloseq)
+require(ggplot2)
+
+# pull the metadata from the phyloseq object and turn it into a data frame
+meta <- as.data.frame(ps1@sam_data)
+df <- meta[, (colnames(meta) %in% c("Soil_Genotype_Position",
+                                    "TotalDryMass_Phyllosphere", 
+                                    "TotalDryMass_root", 
+                                    "RosetteSize_wk8",
+                                    "LeafNum_wk8_1.4.2022",
+                                    "GerminationDate",
+                                    "CaseID",
+                                    "MoistureContent._mean", "PH_mean", "Soil.Type", "SampleID" ))]
+
+library(multcompView)
+
+model <- lm(df$TotalDryMass_Phyllosphere ~ df$Soil_Genotype_Position)
+ANOVA <- aov(model)
+TUKEY <- TukeyHSD(x=ANOVA, 'df$Soil_Genotype_Position', conf.level=0.95)
+plot(TUKEY , las=1 , col="brown")
+#add to a boxplot
+# I need to group the treatments that are not different each other together.
+generate_label_df <- function(TUKEY, variable){
+ 
+     # Extract labels and factor levels from Tukey post-hoc 
+     Tukey.levels <- TUKEY[[variable]][,4]
+     Tukey.labels <- data.frame(multcompLetters(Tukey.levels)['Letters'])
+     
+     #I need to put the labels in the same order as in the boxplot :
+     Tukey.labels$treatment=rownames(Tukey.labels)
+     Tukey.labels=Tukey.labels[order(Tukey.labels$treatment) , ]
+     return(Tukey.labels)
+}
+# Apply the function on my dataset
+LABELS <- generate_label_df(TUKEY , "df$Soil_Genotype_Position")
+LABELS$Soil_Genotype_Position <- LABELS$treatment
+
+#get a y value
+d <- as.matrix(df)
+d <- as.data.frame(d)
+d$Soil_Genotype_Position <- as.factor(d$Soil_Genotype_Position)
+d$TotalDryMass_Phyllosphere <- as.numeric(d$TotalDryMass_Phyllosphere)
+
+yvalue <-  aggregate(TotalDryMass_Phyllosphere~Soil_Genotype_Position, data = d, FUN = mean) # obtain letter position for y axis using means
+final <- merge(LABELS, yvalue)
+
+#add to plot
+
+plot1 <- ggplot(data = df, aes(x = Soil_Genotype_Position, y = TotalDryMass_Phyllosphere, label = CaseID)) +
+  geom_boxplot(outlier.shape  = NA) +
+  labs(x = "Soil_Genotype", y = "Mass (g)", title = "Phylosphere Total Dry Mass") +
+  scale_x_discrete(labels= SamList) + #x axis labels 
+  theme_classic() +
+  theme(plot.title = element_text(size=20, face= "bold", colour= "black", hjust = 0.5),
+        axis.text.x=element_blank(),
+        axis.text.y = element_text(size=12,  colour = "black", face = "bold"),
+        axis.title = element_text(size=16,  colour = "black", face = "bold")) +
+  
+  geom_text(data = final, aes(x = Soil_Genotype_Position, y = TotalDryMass_Phyllosphere, label = Letters,                              size = 50, fontface = "bold"),
+            vjust= -3.5, hjust= -.5) +
+    theme(legend.position="none", panel.grid.major.x = element_line(color = "gray",
+                                        size = 0.5,
+                                        linetype = 2))
+
+plot1 #view the plot
+
+#repeat this for each different metadata comparison by changing the model, then use patchwork to combine the plots. here I made 4 plots.
+library(patchwork)
+p2 <- (plot1 / plot2 ) | (plot3  / plot4) + plot_annotation(tag_levels = 'A')
+
+#save as a pdf
+pdf(file = "plantHealth.pdf", width = 15, height = 10)
+p2
+
+
+## stat compare means plot##
+
+
+
+
+
+
+
+
+
+
+
+
