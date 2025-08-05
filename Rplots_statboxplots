@@ -68,21 +68,70 @@ plot1 <- ggplot(data = df, aes(x = Soil_Genotype_Position, y = TotalDryMass_Phyl
 
 plot1 #view the plot
 
+
+## stat compare means plot##
+#note this code puts NA if insignificant and can make plots messy
+
+# pull the metadata from the phyloseq object and turn it into a data frame
+meta <- as.data.frame(ps1@sam_data)
+df <- meta[, (colnames(meta) %in% c("Soil_Genotype_Position",
+                                    "TotalDryMass_Phyllosphere", 
+                                    "TotalDryMass_root", 
+                                    "RosetteSize_wk8",
+                                    "LeafNum_wk8_1.4.2022",
+                                    "GerminationDate",
+                                    "CaseID",
+                                    "MoistureContent._mean", "PH_mean", "Soil.Type", "SampleID" ))]
+
+#make list of categories to be compared
+my_comparisons <- list ( c("SBC_SBC_NearRoots" , "SBC_WBS_NearRoots"),
+                        c("WBS_SBC_NearRoots" , "WBS_WBS_NearRoots"),
+                        c("CRW_SBC_NearRoots" , "CRW_WBS_NearRoots"),
+                        
+                        c("WBS_SBC_NearRoots" , "SBC_SBC_NearRoots"), #same genotype diff soil
+                        c("WBS_SBC_NearRoots", "CRW_SBC_NearRoots"),
+                        c("CRW_SBC_NearRoots", "SBC_SBC_NearRoots"),
+                        
+                        c("WBS_WBS_NearRoots", "SBC_WBS_NearRoots"),
+                        c("WBS_WBS_NearRoots", "CRW_WBS_NearRoots"),
+                        c("CRW_WBS_NearRoots", "SBC_WBS_NearRoots"))
+                        
+SamList <- c("CRW_CRW", "CRW_SBC", "CRW_WBS" , 
+             "POT_CRW", "POT_SBC", "POT_WBS",
+             "SBC_CRW", "SBC_SBC", "SBC_WBS", 
+             "WBS_CRW", "WBS_SBC", "WBS_WBS" ) 
+
+plot4 <- ggplot(data = df, aes(x = Soil_Genotype_Position, y = LeafNum, label = CaseID)) +
+  geom_boxplot(outlier.shape  = NA) +
+  labs(x = "Soil_Genotype", y = "Leaf Number", title = "Final Leaf Number") +
+  scale_x_discrete(labels= SamList) + #x axis labels
+  theme_classic() +
+  theme(plot.title = element_text(size=20, face= "bold", colour= "black", hjust = 0.5),
+        axis.text.x=element_text(angle = -45, hjust = 0, vjust = 1, 
+                                 size = 12, colour = "black", face = "bold"),
+        axis.text.y = element_text(size=12,  colour = "black", face = "bold"),
+        axis.title = element_text(size=16,  colour = "black", face = "bold")) +
+  stat_compare_means(comparisons = my_comparisons, #this puts stars on things
+                      method = "t.test",
+                      hide.ns = TRUE,
+                      size = 8, vjust = 0.7,
+                      symnum.args = list(cutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 2),
+                                         symbols = c("****", "***", "**", "*", " "))) +
+    theme(panel.grid.major.x = element_line(color = "gray",
+                                        size = 0.5,
+                                        linetype = 2))
+
+
+## patchwork to orient finished plots ##
+
 #repeat this for each different metadata comparison by changing the model, then use patchwork to combine the plots. here I made 4 plots.
+
 library(patchwork)
 p2 <- (plot1 / plot2 ) | (plot3  / plot4) + plot_annotation(tag_levels = 'A')
 
 #save as a pdf
 pdf(file = "plantHealth.pdf", width = 15, height = 10)
 p2
-
-
-## stat compare means plot##
-
-
-
-
-
 
 
 
