@@ -1,0 +1,215 @@
+## example code to make tukey alpha diversity plot ##
+require(tidyverse)
+require(phyloseq)
+library(ggpubr)
+library(ggplot2)
+library(multcompView)
+library(patchwork)
+
+#ps1 is the phyloseq object
+ps_rare <- rarefy_even_depth(ps1, rngseed = 15)
+
+rowSums(ps_rare@otu_table[2,]) #rarified to 25458 reads per sample
+
+#Generate a data.frame with adiv measures
+adiv <- data.frame(
+  "Observed" = estimate_richness(ps_rare, measures = "Observed"),
+  "Shannon" = estimate_richness(ps_rare, measures = "Shannon"),
+  "Simpson" = estimate_richness(ps_rare, measures = "Simpson"),
+  "Soil_Genotype_Position" = sample_data(ps_rare)$Soil_Genotype_Position) #change this line to what you're looking at
+
+# get tukey
+
+all_mod_means <- as.data.frame(matrix(ncol = 0, nrow = 0))
+
+for(i in 1:3){
+  
+  col <- colnames(adiv)
+  phyla <- (adiv[, col[i]])
+  mod <- lm(phyla ~ Soil_Genotype_Position, data = adiv)
+  mod_means_contr <- emmeans::emmeans(object = mod,
+                                    pairwise ~ "Soil_Genotype_Position",
+                                    adjust = "tukey")
+#this has the letters in it
+  mod_means <- multcomp::cld(object = mod_means_contr$emmeans,
+                           Letters = letters)
+  
+  mod_means$alpha <- col[i]
+  
+  all_mod_means <- merge(all_mod_means, mod_means, all = TRUE)
+}
+
+#get the letters into the data frame
+
+adiv$merge <- paste0(adiv$alpha, adiv$Soil_Genotype_Position) #column issue here
+all_mod_means$merge <- paste0(all_mod_means$alpha, all_mod_means$Soil_Genotype_Position)
+adiv2 <- left_join(x = adiv, y = all_mod_means, by = "merge")
+
+#observed
+model <- lm(adiv$Observed ~ adiv$Soil_Genotype_Position)
+ANOVA <- aov(model)
+TUKEY <- TukeyHSD(x=ANOVA, 'adiv$Soil_Genotype_Position', conf.level=0.95)
+plot(TUKEY , las=1 , col="brown")
+
+#add to a boxplot
+# I need to group the treatments that are not different each other together.
+
+generate_label_df <- function(TUKEY, variable){
+ 
+     # Extract labels and factor levels from Tukey post-hoc 
+     Tukey.levels <- TUKEY[[variable]][,4]
+     Tukey.labels <- data.frame(multcompLetters(Tukey.levels)['Letters'])
+     
+     #I need to put the labels in the same order as in the boxplot :
+     Tukey.labels$treatment=rownames(Tukey.labels)
+     Tukey.labels=Tukey.labels[order(Tukey.labels$treatment) , ]
+     return(Tukey.labels)
+}
+obs <- generate_label_df(TUKEY , "adiv$Soil_Genotype_Position")
+colnames(obs) <- c("obs_Letters", "treatment")
+
+#simpson
+model <- lm(adiv$Simpson ~ adiv$Soil_Genotype_Position)
+ANOVA <- aov(model)
+TUKEY <- TukeyHSD(x=ANOVA, 'adiv$Soil_Genotype_Position', conf.level=0.95)
+plot(TUKEY , las=1 , col="brown")
+
+#add to a boxplot
+# I need to group the treatments that are not different each other together.
+generate_label_df <- function(TUKEY, variable){
+ 
+     # Extract labels and factor levels from Tukey post-hoc 
+     Tukey.levels <- TUKEY[[variable]][,4]
+     Tukey.labels <- data.frame(multcompLetters(Tukey.levels)['Letters'])
+     
+     #I need to put the labels in the same order as in the boxplot :
+     Tukey.labels$treatment=rownames(Tukey.labels)
+     Tukey.labels=Tukey.labels[order(Tukey.labels$treatment) , ]
+     return(Tukey.labels)
+}
+
+simp <- generate_label_df(TUKEY , "adiv$Soil_Genotype_Position")
+colnames(simp) <- c("simp_Letters", "treatment")
+
+#shannon
+model <- lm(adiv$Shannon ~ adiv$Soil_Genotype_Position)
+ANOVA <- aov(model)
+TUKEY <- TukeyHSD(x=ANOVA, 'adiv$Soil_Genotype_Position', conf.level=0.95)
+plot(TUKEY , las=1 , col="brown")
+
+#add to a boxplot
+# I need to group the treatments that are not different each other together.
+generate_label_df <- function(TUKEY, variable){
+ 
+     # Extract labels and factor levels from Tukey post-hoc 
+     Tukey.levels <- TUKEY[[variable]][,4]
+     Tukey.labels <- data.frame(multcompLetters(Tukey.levels)['Letters'])
+     
+     #I need to put the labels in the same order as in the boxplot :
+     Tukey.labels$treatment=rownames(Tukey.labels)
+     Tukey.labels=Tukey.labels[order(Tukey.labels$treatment) , ]
+     return(Tukey.labels)
+}
+
+shannon <- generate_label_df(TUKEY , "adiv$Soil_Genotype_Position")
+colnames(shannon) <- c("shannon_Letters", "treatment")
+
+
+#get everything into one data frame
+LABELS <- merge(obs, simp, by = "treatment")
+LABELS <- merge(LABELS, shannon, by = "treatment")
+
+colnames(LABELS) <- c("Soil_Genotype_Position", "obs_Letters", "simp_Letters", "shannon_Letters")
+
+#
+
+adiv2 <- merge(adiv, LABELS, by = "Soil_Genotype_Position")
+
+
+## plot
+
+color <- c("#E69F00","#999933",  "#DDCC77","#D55E00",#crw
+           "#009E73", "#44AA99", "#117733",  "#888888",#pot
+           "#0072B2","#6699CC","#332288","#88CCEE",#sbc
+           "#CC79A7", "#CC6677","#AA4499","#661100")#wbs
+
+obsplot <- ggplot(data = adiv2, aes(x = Soil_Genotype_Position, y = Observed)) +
+   geom_boxplot(outlier.color = NA) +
+  geom_jitter(aes(color = Soil_Genotype_Position), height = 0, width = .2) +
+  labs(x = "", y = "", title = "Observed") +
+  scale_color_manual(values = color) +
+  scale_x_discrete(labels= SamList) + #x axis labels
+  theme_classic() +
+ theme(legend.position="none",
+        plot.title = element_text(hjust = 0.5, size=20, face= "bold", colour= "black"),
+        axis.text.x=element_text(angle = -90, hjust = 0, vjust = 0, size = 12, 
+                                 colour = "black", face = "bold"),
+        axis.text.y = element_text(size=12,  colour = "black", face = "bold"),
+        strip.text = element_text(size = 17, face = "bold"),
+        panel.grid.major.x = element_line(color = "gray",
+                                        size = 0.5,
+                                        linetype = 2)) +
+ # ylim(600, 2300) + 
+  geom_text(data = adiv2, aes(x = Soil_Genotype_Position, y = 1100, label = obs_Letters,                             size = 60, fontface = "bold"),
+            vjust= 0, hjust= 0.5) 
+
+
+shanplot <- ggplot(data = adiv2, aes(x = Soil_Genotype_Position, y = Shannon)) +
+   geom_boxplot(outlier.color = NA) +
+  geom_jitter(aes(color = Soil_Genotype_Position), height = 0, width = .2) +
+  labs(x = "", y = "", title = "Shannon") +
+  scale_color_manual(values = color) +
+  scale_x_discrete(labels= SamList) + #x axis labels
+  theme_classic() +
+  theme(legend.position="none",
+        plot.title = element_text(hjust = 0.5, size=20, face= "bold", colour= "black"),
+        axis.text.x=element_text(angle = -90, hjust = 0, vjust = 0, size = 12, 
+                                 colour = "black", face = "bold"),
+        axis.text.y = element_text(size=12,  colour = "black", face = "bold"),
+        strip.text = element_text(size = 17, face = "bold"),
+        panel.grid.major.x = element_line(color = "gray",
+                                        size = 0.5,
+                                        linetype = 2)) +
+  geom_text(data = adiv2, aes(x = Soil_Genotype_Position, y = 4.5, label = shannon_Letters, 
+                              size = 60, fontface = "bold"),
+            vjust= 0, hjust= 0.5)
+
+
+
+simpplot <- ggplot(data = adiv2, aes(x = Soil_Genotype_Position, y = Simpson)) +
+   geom_boxplot(outlier.color = NA) +
+  geom_jitter(aes(color = Soil_Genotype_Position), height = 0, width = .2) +
+  labs(x = "", y = "", title = "Simpson") +
+  scale_color_manual(values = color) +
+  scale_x_discrete(labels= SamList) + #x axis labels
+  theme_classic() +
+  theme(legend.position="none",
+        plot.title = element_text(hjust = 0.5, size=20, face= "bold", colour= "black"),
+        axis.text.x=element_text(angle = -90, hjust = 0, vjust = 0, size = 12, 
+                                 colour = "black", face = "bold"),
+        axis.text.y = element_text(size=12,  colour = "black", face = "bold"),
+        strip.text = element_text(size = 17, face = "bold"),
+        panel.grid.major.x = element_line(color = "gray",
+                                        size = 0.5,
+                                        linetype = 2)) +
+  geom_text(data = adiv2, aes(x = Soil_Genotype_Position, y = 0.95, label = simp_Letters, 
+                              size = 60, fontface = "bold"),
+            vjust= 0, hjust= 0)
+
+
+
+# use patchwork to stack the plots
+
+
+p3 <- (obsplot | shanplot | simpplot) + plot_annotation(tag_levels = 'A')
+
+
+#pdf(file = "/alphadiv.pdf", width = 25, height = 6)
+p3
+
+
+
+
+
+
+
