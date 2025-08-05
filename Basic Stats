@@ -1,0 +1,22 @@
+# always check your data frame before you start analysis
+
+summary(MyData)
+
+## correlation coefficients ##
+
+ cor(MyData$x, MyData$y)
+
+## Confidence intervals ##
+'Expresses the degree of uncertainty around a given effect
+Definition: Were this exact same experiment repeated many, many times, 95% of our calculated confidence intervals would contain the true mean value for the population'
+#95% CI = mean +/- 1.96*StandardError
+#99% CI = mean +/- 2.58*SE
+#SE = standard deviation / sqrt(number of samples)
+
+SE <- sd(MyData$x) / sqrt(nrows(x))
+Ci1 <- mean(MyData$x) - SE
+Ci2 <- mean(MyData$x) + SE
+
+
+
+
